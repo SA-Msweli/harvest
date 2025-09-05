@@ -10,12 +10,12 @@ import time
 import logging
 import threading
 import requests
+import os
 from flask import Flask, render_template, jsonify, request
 from stellar_sdk import Server, Keypair, TransactionBuilder, Network, Asset
 from stellar_sdk.exceptions import NotFoundError, BadResponseError
 from apscheduler.schedulers.background import BackgroundScheduler
 from cryptography.fernet import Fernet
-import os
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -35,6 +35,7 @@ logs = []
 scheduler = BackgroundScheduler()
 current_price = 0
 last_harvest_time = None
+config_complete = False
 
 # Set up logging
 logging.basicConfig(
@@ -79,7 +80,7 @@ class ReflectorClient:
         except Exception as e:
             logger.error(f"Error getting price from Reflector: {e}")
             return None
-          
+
 class StellarHarvestBot:
     def __init__(self):
         self.config = self.load_config()
@@ -297,9 +298,28 @@ class StellarHarvestBot:
         except Exception as e:
             logger.error(f"Error in check_and_harvest: {e}")
 
+    def is_config_complete(self):
+        """Check if configuration is complete"""
+        required_fields = ['kale_contract_id', 'encrypted_private_key']
+        for field in required_fields:
+            if not self.config.get(field):
+                return False
+        return True
+
 # Initialize bot
 try:
     bot = StellarHarvestBot()
+    config_complete = bot.is_config_complete()
+    
+    # Auto-start if config is complete
+    if config_complete and bot_status == "stopped":
+        interval = bot.config['schedule_interval']
+        scheduler.add_job(bot.check_and_harvest, 'interval', seconds=interval, id='harvest_job')
+        if not scheduler.running:
+            scheduler.start()
+        bot_status = "running"
+        logger.info("Bot started automatically due to complete config")
+        
 except Exception as e:
     logger.error(f"Failed to initialize bot: {e}")
     # Create a dummy bot object to prevent further errors
@@ -310,6 +330,9 @@ except Exception as e:
         
         def get_account_balance(self):
             return 0
+            
+        def is_config_complete(self):
+            return False
     
     bot = DummyBot()
 
@@ -318,13 +341,19 @@ def index():
     """Main dashboard page"""
     balance = bot.get_account_balance()
     public_key = bot.keypair.public_key if bot.keypair else 'Not set'
+    
+    # Update config completeness status
+    global config_complete
+    config_complete = bot.is_config_complete()
+    
     return render_template('index.html', 
                          status=bot_status,
                          balance=balance,
                          config=bot.config,
                          current_price=current_price,
                          last_harvest=last_harvest_time,
-                         public_key=public_key)
+                         public_key=public_key,
+                         config_complete=config_complete)
 
 @app.route('/api/status')
 def api_status():
@@ -334,7 +363,8 @@ def api_status():
         'status': bot_status,
         'balance': balance,
         'current_price': current_price,
-        'last_harvest': last_harvest_time
+        'last_harvest': last_harvest_time,
+        'config_complete': config_complete
     })
 
 @app.route('/api/start', methods=['POST'])
@@ -344,6 +374,10 @@ def api_start():
     
     if bot_status == "running":
         return jsonify({'success': False, 'message': 'Bot is already running'})
+    
+    # Check if config is complete before starting
+    if not bot.is_config_complete():
+        return jsonify({'success': False, 'message': 'Configuration is not complete'})
     
     try:
         # Start the scheduler
@@ -386,8 +420,13 @@ def api_config():
         try:
             new_config = request.get_json()
             bot.save_config(new_config)
+            
+            # Update config completeness status
+            global config_complete
+            config_complete = bot.is_config_complete()
+            
             logger.info("Configuration updated")
-            return jsonify({'success': True, 'message': 'Configuration updated'})
+            return jsonify({'success': True, 'message': 'Configuration updated', 'config_complete': config_complete})
         except Exception as e:
             logger.error(f"Error updating configuration: {e}")
             return jsonify({'success': False, 'message': str(e)})
@@ -407,7 +446,8 @@ if __name__ == '__main__':
         # Start Flask app
         print("Starting Stellar Smart Harvest Bot...")
         print(f"Dashboard available at: http://localhost:5000")
-        print(f"Public Key: {bot.keypair.public_key}")
+        if bot.keypair:
+            print(f"Public Key: {bot.keypair.public_key}")
         print("Press Ctrl+C to stop the bot")
         
         app.run(debug=True, use_reloader=False)

@@ -86,6 +86,10 @@
 
     .config-form {
       margin-top: 20px;
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 5px;
+      background-color: #f8f9fa;
     }
 
     .form-group {
@@ -121,6 +125,15 @@
       border-radius: 5px;
       font-family: monospace;
     }
+
+    .config-warning {
+      background-color: #fff3cd;
+      border: 1px solid #ffeaa7;
+      color: #856404;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 
@@ -129,6 +142,13 @@
     <h1>Stellar Smart Harvest Bot</h1>
 
     <div class="status" id="statusDisplay">Status: {{ status }}</div>
+
+    {% if not config_complete %}
+    <div class="config-warning">
+      <h3>Configuration Required</h3>
+      <p>Please complete the configuration below before starting the bot.</p>
+    </div>
+    {% endif %}
 
     <div class="dashboard">
       <div class="card">
@@ -153,10 +173,11 @@
     </div>
 
     <div>
-      <button id="startBtn" class="button start-btn">Start Bot</button>
+      <button id="startBtn" class="button start-btn" {% if not config_complete %}disabled{% endif %}>Start Bot</button>
       <button id="stopBtn" class="button stop-btn">Stop Bot</button>
     </div>
 
+    {% if not config_complete %}
     <div class="config-form">
       <h3>Configuration</h3>
       <form id="configForm">
@@ -182,8 +203,13 @@
           <input type="text" id="kale_contract_id" name="kale_contract_id" value="{{ config.kale_contract_id }}">
         </div>
         <div class="form-group">
-          <label for="reflector_url">Reflector URL</label>
-          <input type="text" id="reflector_url" name="reflector_url" value="{{ config.reflector_url }}">
+          <label for="reflector_asset">Reflector Base Asset</label>
+          <input type="text" id="reflector_asset" name="reflector_asset" value="{{ config.reflector_asset }}">
+        </div>
+        <div class="form-group">
+          <label for="reflector_quote_asset">Reflector Quote Asset</label>
+          <input type="text" id="reflector_quote_asset" name="reflector_quote_asset"
+            value="{{ config.reflector_quote_asset }}">
         </div>
         <div class="form-group">
           <label for="schedule_interval">Schedule Interval (seconds)</label>
@@ -193,23 +219,10 @@
           <label for="min_balance">Minimum Balance (XLM)</label>
           <input type="number" id="min_balance" name="min_balance" step="0.1" value="{{ config.min_balance }}">
         </div>
-
-        <div class="form-group">
-          <label for="soroban_rpc_url">Soroban RPC URL</label>
-          <input type="text" id="soroban_rpc_url" name="soroban_rpc_url" value="{{ config.soroban_rpc_url }}">
-        </div>
-        <div class="form-group">
-          <label for="reflector_asset">Reflector Base Asset</label>
-          <input type="text" id="reflector_asset" name="reflector_asset" value="{{ config.reflector_asset }}">
-        </div>
-        <div class="form-group">
-          <label for="reflector_quote_asset">Reflector Quote Asset</label>
-          <input type="text" id="reflector_quote_asset" name="reflector_quote_asset"
-            value="{{ config.reflector_quote_asset }}">
-        </div>
         <button type="submit" class="button save-btn">Save Configuration</button>
       </form>
     </div>
+    {% endif %}
 
     <div class="logs">
       <h3>Logs</h3>
@@ -232,6 +245,12 @@
           if (data.last_harvest) {
             const date = new Date(data.last_harvest * 1000);
             document.getElementById('lastHarvest').textContent = date.toLocaleString();
+          }
+
+          // Enable/disable start button based on config completeness
+          const startBtn = document.getElementById('startBtn');
+          if (startBtn) {
+            startBtn.disabled = !data.config_complete;
           }
         });
     }
@@ -268,29 +287,36 @@
     });
 
     // Save configuration
-    document.getElementById('configForm').addEventListener('submit', (e) => {
-      e.preventDefault();
+    const configForm = document.getElementById('configForm');
+    if (configForm) {
+      configForm.addEventListener('submit', (e) => {
+        e.preventDefault();
 
-      const formData = new FormData(e.target);
-      const config = Object.fromEntries(formData.entries());
+        const formData = new FormData(e.target);
+        const config = Object.fromEntries(formData.entries());
 
-      // Convert number fields
-      config.threshold_price = parseFloat(config.threshold_price);
-      config.schedule_interval = parseInt(config.schedule_interval);
-      config.min_balance = parseFloat(config.min_balance);
+        // Convert number fields
+        config.threshold_price = parseFloat(config.threshold_price);
+        config.schedule_interval = parseInt(config.schedule_interval);
+        config.min_balance = parseFloat(config.min_balance);
 
-      fetch('/api/config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(config)
-      })
-        .then(response => response.json())
-        .then(data => {
-          alert(data.message);
-        });
-    });
+        fetch('/api/config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(config)
+        })
+          .then(response => response.json())
+          .then(data => {
+            alert(data.message);
+            if (data.config_complete) {
+              // Reload the page to hide the config form
+              window.location.reload();
+            }
+          });
+      });
+    }
 
     // Update status and logs periodically
     setInterval(updateStatus, 5000);
