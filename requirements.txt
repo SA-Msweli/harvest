@@ -1,0 +1,5 @@
+flask
+stellar-sdk
+apscheduler
+cryptography
+dotenv
