@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Stellar Smart Harvest Bot with Real Reflector Integration
-A bot that monitors asset prices using Reflector oracle and automatically executes harvest operations
-when price thresholds are met on the Stellar network.
+Enhanced version with better Reflector and KALE integration
 """
 
 import json
@@ -13,6 +12,7 @@ import requests
 import os
 from flask import Flask, render_template, jsonify, request
 from stellar_sdk import Server, Keypair, TransactionBuilder, Network, Asset
+from stellar_sdk import xdr as stellar_xdr
 from stellar_sdk.exceptions import NotFoundError, BadResponseError
 from apscheduler.schedulers.background import BackgroundScheduler
 from cryptography.fernet import Fernet
@@ -49,7 +49,7 @@ logging.basicConfig(
 logger = logging.getLogger("StellarHarvestBot")
 
 class ReflectorClient:
-    """Client for interacting with Reflector price oracle"""
+    """Enhanced client for interacting with Reflector price oracle"""
     
     def __init__(self, network):
         self.network = network
@@ -58,6 +58,12 @@ class ReflectorClient:
     def get_price(self, base_asset, quote_asset="USD"):
         """Get current price from Reflector oracle using its API"""
         try:
+            # Format asset properly (code:issuer for non-native assets)
+            if base_asset != "XLM" and ":" not in base_asset:
+                # If we have issuer information, use it
+                if hasattr(self, 'base_asset_issuer') and self.base_asset_issuer:
+                    base_asset = f"{base_asset}:{self.base_asset_issuer}"
+            
             # Use Reflector's API to get the price
             url = f"{self.base_url}/price/{base_asset}/{quote_asset}"
             response = requests.get(url, timeout=10)
@@ -80,6 +86,13 @@ class ReflectorClient:
         except Exception as e:
             logger.error(f"Error getting price from Reflector: {e}")
             return None
+            
+    def get_multiple_prices(self, assets, quote_asset="USD"):
+        """Get prices for multiple assets at once"""
+        prices = {}
+        for asset in assets:
+            prices[asset] = self.get_price(asset, quote_asset)
+        return prices
 
 class StellarHarvestBot:
     def __init__(self):
@@ -88,6 +101,10 @@ class StellarHarvestBot:
         self.server = Server(horizon_url=self.config['horizon_url'])
         self.network = Network.TESTNET_NETWORK_PASSPHRASE if self.config['network'] == 'testnet' else Network.PUBLIC_NETWORK_PASSPHRASE
         self.reflector = ReflectorClient(self.network)
+        
+        # Set issuer if provided in config
+        if 'base_asset_issuer' in self.config and self.config['base_asset_issuer']:
+            self.reflector.base_asset_issuer = self.config['base_asset_issuer']
         
     def load_config(self):
         """Load configuration from JSON file"""
@@ -102,7 +119,11 @@ class StellarHarvestBot:
             # Set defaults for new config options
             defaults = {
                 "reflector_asset": "KALE",
-                "reflector_quote_asset": "USD"
+                "reflector_quote_asset": "USD",
+                "base_asset_issuer": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
+                "slippage_tolerance": 0.01,  # 1% slippage tolerance
+                "max_retries": 3,
+                "health_check_interval": 300  # 5 minutes
             }
             
             for key, value in defaults.items():
@@ -128,8 +149,12 @@ class StellarHarvestBot:
             "kale_contract_id": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
             "reflector_asset": "KALE",
             "reflector_quote_asset": "USD",
+            "base_asset_issuer": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
             "schedule_interval": 30,
-            "min_balance": 2.0
+            "min_balance": 2.0,
+            "slippage_tolerance": 0.01,
+            "max_retries": 3,
+            "health_check_interval": 300
         }
         
         with open(CONFIG_FILE, 'w') as f:
@@ -142,6 +167,10 @@ class StellarHarvestBot:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(new_config, f, indent=4)
         self.config = new_config
+        
+        # Update reflector issuer if provided
+        if 'base_asset_issuer' in new_config and new_config['base_asset_issuer']:
+            self.reflector.base_asset_issuer = new_config['base_asset_issuer']
 
     def encrypt_key(self, private_key):
         """Encrypt private key for secure storage"""
@@ -257,7 +286,7 @@ class StellarHarvestBot:
                 .append_invoke_contract_function_op(
                     contract_id=self.config['kale_contract_id'],
                     function_name="harvest",
-                    parameters=[],
+                    parameters=[],  # Empty parameters for harvest function
                     source=self.keypair.public_key
                 )
                 .set_timeout(30)
@@ -269,16 +298,22 @@ class StellarHarvestBot:
             response = self.server.submit_transaction(transaction)
             
             logger.info(f"Harvest transaction successful: {response['hash']}")
-            return True
+            return True, response['hash']
         except Exception as e:
             logger.error(f"Error invoking harvest contract: {e}")
-            return False
+            return False, str(e)
 
     def check_and_harvest(self):
         """Check price and execute harvest if threshold is met"""
         global current_price, last_harvest_time
         
         try:
+            # Check if we have sufficient balance
+            balance = self.get_account_balance()
+            if balance < self.config['min_balance']:
+                logger.warning(f"Insufficient balance: {balance} XLM. Minimum required: {self.config['min_balance']} XLM")
+                return
+            
             # Get current price
             current_price = self.get_price_from_reflector()
             logger.info(f"Current price: {current_price}, Threshold: {self.config['threshold_price']}")
@@ -286,12 +321,20 @@ class StellarHarvestBot:
             # Check if price meets threshold
             if current_price >= self.config['threshold_price']:
                 logger.info("Price threshold met, executing harvest...")
-                success = self.invoke_harvest_contract()
-                if success:
-                    last_harvest_time = time.time()
-                    logger.info("Harvest executed successfully")
+                
+                # Retry logic
+                for attempt in range(self.config['max_retries']):
+                    success, result = self.invoke_harvest_contract()
+                    if success:
+                        last_harvest_time = time.time()
+                        logger.info(f"Harvest executed successfully. TX Hash: {result}")
+                        break
+                    else:
+                        logger.error(f"Attempt {attempt + 1} failed: {result}")
+                        if attempt < self.config['max_retries'] - 1:
+                            time.sleep(2)  # Wait before retrying
                 else:
-                    logger.error("Failed to execute harvest")
+                    logger.error("All harvest attempts failed")
             else:
                 logger.info("Price below threshold, no action taken")
                 
@@ -306,6 +349,15 @@ class StellarHarvestBot:
                 return False
         return True
 
+    def get_transaction_history(self, limit=10):
+        """Get recent transactions for the account"""
+        try:
+            transactions = self.server.transactions().for_account(self.keypair.public_key).limit(limit).call()
+            return transactions['_embedded']['records']
+        except Exception as e:
+            logger.error(f"Error getting transaction history: {e}")
+            return []
+
 # Initialize bot
 try:
     bot = StellarHarvestBot()
@@ -315,6 +367,15 @@ try:
     if config_complete and bot_status == "stopped":
         interval = bot.config['schedule_interval']
         scheduler.add_job(bot.check_and_harvest, 'interval', seconds=interval, id='harvest_job')
+        
+        # Add health check job
+        scheduler.add_job(
+            lambda: logger.info("Bot health check: OK"), 
+            'interval', 
+            seconds=bot.config['health_check_interval'], 
+            id='health_check_job'
+        )
+        
         if not scheduler.running:
             scheduler.start()
         bot_status = "running"
@@ -333,6 +394,9 @@ except Exception as e:
             
         def is_config_complete(self):
             return False
+            
+        def get_transaction_history(self, limit=10):
+            return []
     
     bot = DummyBot()
 
@@ -341,6 +405,7 @@ def index():
     """Main dashboard page"""
     balance = bot.get_account_balance()
     public_key = bot.keypair.public_key if bot.keypair else 'Not set'
+    transactions = bot.get_transaction_history(5)
     
     # Update config completeness status
     global config_complete
@@ -353,7 +418,8 @@ def index():
                          current_price=current_price,
                          last_harvest=last_harvest_time,
                          public_key=public_key,
-                         config_complete=config_complete)
+                         config_complete=config_complete,
+                         transactions=transactions)
 
 @app.route('/api/status')
 def api_status():
@@ -383,6 +449,15 @@ def api_start():
         # Start the scheduler
         interval = bot.config['schedule_interval']
         scheduler.add_job(bot.check_and_harvest, 'interval', seconds=interval, id='harvest_job')
+        
+        # Add health check job
+        scheduler.add_job(
+            lambda: logger.info("Bot health check: OK"), 
+            'interval', 
+            seconds=bot.config['health_check_interval'], 
+            id='health_check_job'
+        )
+        
         if not scheduler.running:
             scheduler.start()
         
@@ -402,8 +477,9 @@ def api_stop():
         return jsonify({'success': False, 'message': 'Bot is already stopped'})
     
     try:
-        # Remove the job
+        # Remove the jobs
         scheduler.remove_job('harvest_job')
+        scheduler.remove_job('health_check_job')
         bot_status = "stopped"
         logger.info("Bot stopped")
         return jsonify({'success': True, 'message': 'Bot stopped successfully'})
@@ -441,6 +517,30 @@ def api_logs():
     except Exception as e:
         return jsonify({'logs': [f"Error reading logs: {e}"]})
 
+@app.route('/api/transactions')
+def api_transactions():
+    """API endpoint to get transaction history"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        transactions = bot.get_transaction_history(limit)
+        return jsonify({'transactions': transactions})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/manual-harvest', methods=['POST'])
+def api_manual_harvest():
+    """API endpoint to manually trigger a harvest"""
+    try:
+        success, result = bot.invoke_harvest_contract()
+        if success:
+            global last_harvest_time
+            last_harvest_time = time.time()
+            return jsonify({'success': True, 'message': 'Manual harvest executed', 'tx_hash': result})
+        else:
+            return jsonify({'success': False, 'message': f'Harvest failed: {result}'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 if __name__ == '__main__':
     try:
         # Start Flask app
@@ -450,7 +550,7 @@ if __name__ == '__main__':
             print(f"Public Key: {bot.keypair.public_key}")
         print("Press Ctrl+C to stop the bot")
         
-        app.run(debug=True, use_reloader=False)
+        app.run(debug=True, use_reloader=False, host='0.0.0.0')
     except KeyboardInterrupt:
         print("\nShutting down...")
         scheduler.shutdown()

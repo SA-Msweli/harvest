@@ -5,64 +5,107 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stellar Smart Harvest Bot</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
+    :root {
+      --primary: #2c3e50;
+      --secondary: #3498db;
+      --success: #27ae60;
+      --danger: #e74c3c;
+      --warning: #f39c12;
+      --info: #2980b9;
+      --light: #ecf0f1;
+      --dark: #2c3e50;
+    }
+
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
-      padding: 20px;
-      background-color: #f5f5f5;
+      padding: 0;
+      background-color: #f8f9fa;
       color: #333;
     }
 
     .container {
-      max-width: 1000px;
+      max-width: 1200px;
       margin: 0 auto;
-      background: white;
       padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      color: white;
+      padding: 20px 0;
+      border-radius: 8px 8px 0 0;
+      margin-bottom: 20px;
     }
 
     h1 {
-      color: #2c3e50;
+      margin: 0;
       text-align: center;
+      font-size: 2.5rem;
     }
 
-    .status {
-      padding: 10px;
-      border-radius: 5px;
-      margin-bottom: 20px;
+    .subtitle {
       text-align: center;
+      opacity: 0.8;
+      margin-top: 5px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 20px;
       font-weight: bold;
+      margin-left: 10px;
     }
 
-    .status.running {
-      background-color: #d4edda;
-      color: #155724;
+    .status-running {
+      background-color: var(--success);
+      color: white;
     }
 
-    .status.stopped {
-      background-color: #f8d7da;
-      color: #721c24;
+    .status-stopped {
+      background-color: var(--danger);
+      color: white;
     }
 
     .dashboard {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 20px;
       margin-bottom: 20px;
     }
 
     .card {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 5px;
-      border-left: 4px solid #2c3e50;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
     }
 
     .card h3 {
       margin-top: 0;
-      color: #2c3e50;
+      color: var(--primary);
+      border-bottom: 2px solid var(--light);
+      padding-bottom: 10px;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: bold;
+      color: var(--secondary);
+      margin: 10px 0;
+    }
+
+    .stat-label {
+      color: #7f8c8d;
+      font-size: 0.9rem;
     }
 
     .button {
@@ -72,15 +115,26 @@
       cursor: pointer;
       font-weight: bold;
       margin-right: 10px;
+      transition: all 0.2s;
+    }
+
+    .button:hover {
+      opacity: 0.9;
+      transform: scale(1.05);
     }
 
     .start-btn {
-      background-color: #28a745;
+      background-color: var(--success);
       color: white;
     }
 
     .stop-btn {
-      background-color: #dc3545;
+      background-color: var(--danger);
+      color: white;
+    }
+
+    .manual-btn {
+      background-color: var(--info);
       color: white;
     }
 
@@ -88,8 +142,14 @@
       margin-top: 20px;
       border: 1px solid #ddd;
       padding: 20px;
-      border-radius: 5px;
-      background-color: #f8f9fa;
+      border-radius: 8px;
+      background-color: white;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
     }
 
     .form-group {
@@ -100,30 +160,91 @@
       display: block;
       margin-bottom: 5px;
       font-weight: bold;
+      color: var(--primary);
     }
 
     input[type="text"],
-    input[type="number"] {
+    input[type="number"],
+    select {
       width: 100%;
-      padding: 8px;
+      padding: 10px;
       border: 1px solid #ddd;
       border-radius: 4px;
+      box-sizing: border-box;
     }
 
     .save-btn {
-      background-color: #007bff;
+      background-color: var(--primary);
+      color: white;
+      padding: 12px 20px;
+      font-size: 1rem;
+    }
+
+    .logs-container {
+      margin-top: 30px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .logs-header {
+      background-color: var(--primary);
+      color: white;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logs-content {
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 15px;
+      background: #2c3e50;
+      color: white;
+      font-family: monospace;
+      line-height: 1.5;
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 5px;
+    }
+
+    .log-time {
+      color: #3498db;
+    }
+
+    .transaction-history {
+      margin-top: 30px;
+    }
+
+    .transaction-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    .transaction-table th,
+    .transaction-table td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .transaction-table th {
+      background-color: var(--primary);
       color: white;
     }
 
-    .logs {
-      margin-top: 30px;
-      max-height: 300px;
-      overflow-y: auto;
-      background: #2c3e50;
-      color: white;
-      padding: 15px;
-      border-radius: 5px;
-      font-family: monospace;
+    .transaction-table tr:nth-child(even) {
+      background-color: #f8f9fa;
+    }
+
+    .transaction-table tr:hover {
+      background-color: #e8f4fc;
     }
 
     .config-warning {
@@ -134,123 +255,212 @@
       border-radius: 5px;
       margin-bottom: 20px;
     }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <h1>Stellar Smart Harvest Bot</h1>
-
-    <div class="status" id="statusDisplay">Status: {{ status }}</div>
+    <header>
+      <h1>Stellar Smart Harvest Bot <span class="status-badge" id="statusDisplay">Status: {{ status }}</span></h1>
+      <p class="subtitle">Automated harvesting based on Reflector price feeds</p>
+    </header>
 
     {% if not config_complete %}
     <div class="config-warning">
-      <h3>Configuration Required</h3>
+      <h3><i class="fas fa-exclamation-triangle"></i> Configuration Required</h3>
       <p>Please complete the configuration below before starting the bot.</p>
     </div>
     {% endif %}
 
-    <div class="dashboard">
-      <div class="card">
-        <h3>Account Info</h3>
-        <p><strong>Public Key:</strong> {{ public_key }}</p>
-        <p><strong>Balance:</strong> {{ balance }} XLM</p>
-      </div>
-
-      <div class="card">
-        <h3>Price Info</h3>
-        <p><strong>Current Price:</strong> <span id="currentPrice">{{ current_price }}</span> {{ config.asset_pair }}
-        </p>
-        <p><strong>Threshold:</strong> {{ config.threshold_price }}</p>
-        <p><strong>Last Harvest:</strong> <span id="lastHarvest">
-            {% if last_harvest_time %}
-            {{ last_harvest_time|ctime }}
-            {% else %}
-            Never
-            {% endif %}
-          </span></p>
-      </div>
+    <div class="action-buttons">
+      <button id="startBtn" class="button start-btn" {% if not config_complete %}disabled{% endif %}><i
+          class="fas fa-play"></i> Start Bot</button>
+      <button id="stopBtn" class="button stop-btn"><i class="fas fa-stop"></i> Stop Bot</button>
+      <button id="manualHarvestBtn" class="button manual-btn" {% if not config_complete %}disabled{% endif %}><i
+          class="fas fa-hand-paper"></i> Manual Harvest</button>
+      <button id="refreshBtn" class="button"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 
-    <div>
-      <button id="startBtn" class="button start-btn" {% if not config_complete %}disabled{% endif %}>Start Bot</button>
-      <button id="stopBtn" class="button stop-btn">Stop Bot</button>
+    <div class="dashboard">
+      <div class="card">
+        <h3><i class="fas fa-wallet"></i> Account Info</h3>
+        <p class="stat-label">Public Key</p>
+        <p class="stat-value" style="font-size: 1rem; word-break: break-all;">{{ public_key }}</p>
+        <p class="stat-label">Balance</p>
+        <p class="stat-value">{{ balance }} XLM</p>
+      </div>
+
+      <div class="card">
+        <h3><i class="fas fa-chart-line"></i> Price Info</h3>
+        <p class="stat-label">Current Price</p>
+        <p class="stat-value"><span id="currentPrice">{{ current_price }}</span> {{ config.asset_pair }}</p>
+        <p class="stat-label">Threshold</p>
+        <p class="stat-value">{{ config.threshold_price }}</p>
+      </div>
+
+      <div class="card">
+        <h3><i class="fas fa-history"></i> Harvest Info</h3>
+        <p class="stat-label">Last Harvest</p>
+        <p class="stat-value" id="lastHarvest">
+          {% if last_harvest_time %}
+          {{ last_harvest_time|ctime }}
+          {% else %}
+          Never
+          {% endif %}
+        </p>
+        <p class="stat-label">Next Check</p>
+        <p class="stat-value" id="nextCheck">Calculating...</p>
+      </div>
     </div>
 
     {% if not config_complete %}
     <div class="config-form">
-      <h3>Configuration</h3>
+      <h3><i class="fas fa-cog"></i> Configuration</h3>
       <form id="configForm">
-        <div class="form-group">
-          <label for="network">Network</label>
-          <input type="text" id="network" name="network" value="{{ config.network }}">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="network">Network</label>
+            <select id="network" name="network">
+              <option value="testnet" {% if config.network=='testnet' %}selected{% endif %}>Testnet</option>
+              <option value="public" {% if config.network=='public' %}selected{% endif %}>Mainnet</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="horizon_url">Horizon URL</label>
+            <input type="text" id="horizon_url" name="horizon_url" value="{{ config.horizon_url }}">
+          </div>
+          <div class="form-group">
+            <label for="asset_pair">Asset Pair</label>
+            <input type="text" id="asset_pair" name="asset_pair" value="{{ config.asset_pair }}">
+          </div>
+          <div class="form-group">
+            <label for="threshold_price">Threshold Price</label>
+            <input type="number" id="threshold_price" name="threshold_price" step="0.01"
+              value="{{ config.threshold_price }}">
+          </div>
+          <div class="form-group">
+            <label for="kale_contract_id">KALE Contract ID</label>
+            <input type="text" id="kale_contract_id" name="kale_contract_id" value="{{ config.kale_contract_id }}">
+          </div>
+          <div class="form-group">
+            <label for="reflector_asset">Reflector Base Asset</label>
+            <input type="text" id="reflector_asset" name="reflector_asset" value="{{ config.reflector_asset }}">
+          </div>
+          <div class="form-group">
+            <label for="base_asset_issuer">Base Asset Issuer</label>
+            <input type="text" id="base_asset_issuer" name="base_asset_issuer" value="{{ config.base_asset_issuer }}">
+          </div>
+          <div class="form-group">
+            <label for="reflector_quote_asset">Reflector Quote Asset</label>
+            <input type="text" id="reflector_quote_asset" name="reflector_quote_asset"
+              value="{{ config.reflector_quote_asset }}">
+          </div>
+          <div class="form-group">
+            <label for="schedule_interval">Schedule Interval (seconds)</label>
+            <input type="number" id="schedule_interval" name="schedule_interval" value="{{ config.schedule_interval }}">
+          </div>
+          <div class="form-group">
+            <label for="min_balance">Minimum Balance (XLM)</label>
+            <input type="number" id="min_balance" name="min_balance" step="0.1" value="{{ config.min_balance }}">
+          </div>
+          <div class="form-group">
+            <label for="slippage_tolerance">Slippage Tolerance</label>
+            <input type="number" id="slippage_tolerance" name="slippage_tolerance" step="0.01"
+              value="{{ config.slippage_tolerance }}">
+          </div>
+          <div class="form-group">
+            <label for="max_retries">Max Retries</label>
+            <input type="number" id="max_retries" name="max_retries" value="{{ config.max_retries }}">
+          </div>
         </div>
-        <div class="form-group">
-          <label for="horizon_url">Horizon URL</label>
-          <input type="text" id="horizon_url" name="horizon_url" value="{{ config.horizon_url }}">
-        </div>
-        <div class="form-group">
-          <label for="asset_pair">Asset Pair</label>
-          <input type="text" id="asset_pair" name="asset_pair" value="{{ config.asset_pair }}">
-        </div>
-        <div class="form-group">
-          <label for="threshold_price">Threshold Price</label>
-          <input type="number" id="threshold_price" name="threshold_price" step="0.01"
-            value="{{ config.threshold_price }}">
-        </div>
-        <div class="form-group">
-          <label for="kale_contract_id">KALE Contract ID</label>
-          <input type="text" id="kale_contract_id" name="kale_contract_id" value="{{ config.kale_contract_id }}">
-        </div>
-        <div class="form-group">
-          <label for="reflector_asset">Reflector Base Asset</label>
-          <input type="text" id="reflector_asset" name="reflector_asset" value="{{ config.reflector_asset }}">
-        </div>
-        <div class="form-group">
-          <label for="reflector_quote_asset">Reflector Quote Asset</label>
-          <input type="text" id="reflector_quote_asset" name="reflector_quote_asset"
-            value="{{ config.reflector_quote_asset }}">
-        </div>
-        <div class="form-group">
-          <label for="schedule_interval">Schedule Interval (seconds)</label>
-          <input type="number" id="schedule_interval" name="schedule_interval" value="{{ config.schedule_interval }}">
-        </div>
-        <div class="form-group">
-          <label for="min_balance">Minimum Balance (XLM)</label>
-          <input type="number" id="min_balance" name="min_balance" step="0.1" value="{{ config.min_balance }}">
-        </div>
-        <button type="submit" class="button save-btn">Save Configuration</button>
+        <button type="submit" class="button save-btn"><i class="fas fa-save"></i> Save Configuration</button>
       </form>
     </div>
     {% endif %}
 
-    <div class="logs">
-      <h3>Logs</h3>
-      <div id="logContent">
+    <div class="transaction-history">
+      <h3><i class="fas fa-receipt"></i> Recent Transactions</h3>
+      <table class="transaction-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Transaction Hash</th>
+            <th>Type</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="transactionTableBody">
+          <!-- Transactions will be loaded by JavaScript -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="logs-container">
+      <div class="logs-header">
+        <h3><i class="fas fa-terminal"></i> Logs</h3>
+        <button id="clearLogsBtn" class="button"><i class="fas fa-trash"></i> Clear Logs</button>
+      </div>
+      <div class="logs-content" id="logContent">
         <!-- Logs will be loaded here -->
       </div>
     </div>
   </div>
 
   <script>
+    let nextCheckTime = null;
+    let checkInterval = {{ config.schedule_interval }};
+
     // Update status display
     function updateStatus() {
       fetch('/api/status')
         .then(response => response.json())
         .then(data => {
           document.getElementById('statusDisplay').textContent = `Status: ${data.status}`;
-          document.getElementById('statusDisplay').className = `status ${data.status}`;
-          document.getElementById('currentPrice').textContent = data.current_price;
+          document.getElementById('statusDisplay').className = `status-badge status-${data.status}`;
+          document.getElementById('currentPrice').textContent = data.current_price.toFixed(6);
 
           if (data.last_harvest) {
             const date = new Date(data.last_harvest * 1000);
             document.getElementById('lastHarvest').textContent = date.toLocaleString();
           }
 
-          // Enable/disable start button based on config completeness
+          // Enable/disable buttons based on config completeness and status
           const startBtn = document.getElementById('startBtn');
+          const manualBtn = document.getElementById('manualHarvestBtn');
+
           if (startBtn) {
-            startBtn.disabled = !data.config_complete;
+            startBtn.disabled = !data.config_complete || data.status === 'running';
+          }
+
+          if (manualBtn) {
+            manualBtn.disabled = !data.config_complete;
+          }
+
+          // Update next check time
+          if (data.status === 'running') {
+            if (!nextCheckTime) {
+              nextCheckTime = new Date(Date.now() + checkInterval * 1000);
+            }
+            document.getElementById('nextCheck').textContent = nextCheckTime.toLocaleTimeString();
+          } else {
+            document.getElementById('nextCheck').textContent = 'Not scheduled';
+            nextCheckTime = null;
           }
         });
     }
@@ -261,8 +471,33 @@
         .then(response => response.json())
         .then(data => {
           const logContent = document.getElementById('logContent');
-          logContent.innerHTML = data.logs.join('<br>');
+          logContent.innerHTML = data.logs.map(log =>
+            `<div class="log-entry"><span class="log-time">${log.substring(0, 19)}</span> ${log.substring(20)}</div>`
+          ).join('');
           logContent.scrollTop = logContent.scrollHeight;
+        });
+    }
+
+    // Load transactions
+    function loadTransactions() {
+      fetch('/api/transactions?limit=5')
+        .then(response => response.json())
+        .then(data => {
+          if (data.transactions) {
+            const tbody = document.getElementById('transactionTableBody');
+            tbody.innerHTML = data.transactions.map(tx => {
+              const date = new Date(tx.created_at);
+              const shortHash = tx.hash.substring(0, 10) + '...' + tx.hash.substring(tx.hash.length - 10);
+              return `
+                        <tr>
+                            <td>${date.toLocaleString()}</td>
+                            <td><a href="${tx._links.self.href}" target="_blank">${shortHash}</a></td>
+                            <td>Harvest</td>
+                            <td>${tx.successful ? 'Success' : 'Failed'}</td>
+                        </tr>
+                    `;
+            }).join('');
+          }
         });
     }
 
@@ -286,6 +521,34 @@
         });
     });
 
+    // Manual harvest
+    document.getElementById('manualHarvestBtn').addEventListener('click', () => {
+      if (confirm('Are you sure you want to manually trigger a harvest?')) {
+        fetch('/api/manual-harvest', { method: 'POST' })
+          .then(response => response.json())
+          .then(data => {
+            alert(data.message);
+            updateStatus();
+            loadTransactions();
+          });
+      }
+    });
+
+    // Refresh data
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      updateStatus();
+      loadLogs();
+      loadTransactions();
+    });
+
+    // Clear logs
+    document.getElementById('clearLogsBtn').addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear the logs?')) {
+        // This would need a server endpoint to clear logs
+        alert('Log clearing functionality would be implemented here');
+      }
+    });
+
     // Save configuration
     const configForm = document.getElementById('configForm');
     if (configForm) {
@@ -299,6 +562,8 @@
         config.threshold_price = parseFloat(config.threshold_price);
         config.schedule_interval = parseInt(config.schedule_interval);
         config.min_balance = parseFloat(config.min_balance);
+        config.slippage_tolerance = parseFloat(config.slippage_tolerance);
+        config.max_retries = parseInt(config.max_retries);
 
         fetch('/api/config', {
           method: 'POST',
@@ -311,6 +576,8 @@
           .then(data => {
             alert(data.message);
             if (data.config_complete) {
+              // Update check interval
+              checkInterval = config.schedule_interval;
               // Reload the page to hide the config form
               window.location.reload();
             }
@@ -321,10 +588,20 @@
     // Update status and logs periodically
     setInterval(updateStatus, 5000);
     setInterval(loadLogs, 3000);
+    setInterval(loadTransactions, 10000);
+
+    // Update next check time countdown
+    setInterval(() => {
+      if (nextCheckTime) {
+        nextCheckTime = new Date(nextCheckTime.getTime() - 1000);
+        document.getElementById('nextCheck').textContent = nextCheckTime.toLocaleTimeString();
+      }
+    }, 1000);
 
     // Initial load
     updateStatus();
     loadLogs();
+    loadTransactions();
   </script>
 </body>
 
