@@ -3,3 +3,5 @@ stellar-sdk
 apscheduler
 cryptography
 dotenv
+numpy
+pandas
